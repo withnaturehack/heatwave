@@ -68,13 +68,41 @@ export default function OnboardingStep3Page() {
     load();
   }, [router]);
 
+  const validatePhotoFile = (file: File): { valid: boolean; error?: string } => {
+    const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+    const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+
+    if (file.size > MAX_FILE_SIZE) {
+      return { valid: false, error: `File size must be under 5MB (${(file.size / 1024 / 1024).toFixed(1)}MB)` };
+    }
+
+    if (!ALLOWED_TYPES.includes(file.type)) {
+      return { valid: false, error: `Only JPEG, PNG, WebP, and GIF images are allowed` };
+    }
+
+    return { valid: true };
+  };
+
   const handleFileChange = (
     file: File | null,
     setFile: (f: File | null) => void,
     setPreview: (url: string | null) => void,
   ) => {
+    if (!file) {
+      setFile(null);
+      setPreview(null);
+      return;
+    }
+
+    const validation = validatePhotoFile(file);
+    if (!validation.valid) {
+      setError(validation.error || "Invalid file");
+      return;
+    }
+
+    setError(null);
     setFile(file);
-    setPreview(file ? URL.createObjectURL(file) : null);
+    setPreview(URL.createObjectURL(file));
   };
 
   const openPhotoGuidance = (slot: "photo1" | "photo2" | "photo3") => {
@@ -110,6 +138,13 @@ export default function OnboardingStep3Page() {
   const handleSave = async () => {
     setError(null);
     if (!userId) return;
+
+    // Validate that main photo exists
+    if (!mainFile && !existingMainUrl) {
+      setError("A main photo is required");
+      return;
+    }
+
     setSaving(true);
     try {
       const [mainUrl, url2, url3] = await Promise.all([
