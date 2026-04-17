@@ -11,8 +11,6 @@ import { supabase } from "@/lib/supabaseClient";
 import {
   LANDING,
   FAQ,
-  MEMBERSHIP_STORAGE_KEY,
-  MEMBERSHIP_APPLICATION_STORAGE_KEY,
 } from "@/config/site";
 import { Button, Text, PageContainer } from "@/components/ui";
 import { COLORS } from "@/lib/theme";
@@ -46,22 +44,6 @@ export default function HomePage() {
   const visibleFaqs = showAllFaq ? FAQ.questions : FAQ.questions.slice(0, 4);
 
   useEffect(() => {
-    const checkSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return;
-
-      const isVerified =
-        typeof window !== "undefined" &&
-        localStorage.getItem(MEMBERSHIP_STORAGE_KEY) === "true";
-      const hasApplied =
-        typeof window !== "undefined" &&
-        !!localStorage.getItem(MEMBERSHIP_APPLICATION_STORAGE_KEY);
-
-      if (!isVerified && !hasApplied) {
-        router.replace("/membership-access");
-      }
-    };
-    checkSession();
     const checkAuth = async () => {
       const {
         data: { session },
@@ -69,6 +51,30 @@ export default function HomePage() {
       setIsLoggedIn(!!session);
 
       if (session) {
+        // Check membership and application status from database
+        const { data: memberData } = await supabase
+          .from("members")
+          .select("id")
+          .eq("user_id", session.user.id)
+          .maybeSingle();
+
+        const { data: applicationData } = await supabase
+          .from("membership_applications")
+          .select("id")
+          .eq("user_id", session.user.id)
+          .maybeSingle();
+
+        const isVerified = !!memberData;
+        const hasApplied = !!applicationData;
+
+        if (!isVerified && !hasApplied) {
+          router.replace("/membership-access");
+          return;
+        }
+
+        setIsWaitingForAccess(!isVerified && hasApplied);
+
+        // Fetch profile for review state
         const { data: profile } = await supabase
           .from("profiles")
           .select("conversation_transcript, updated_at")
@@ -91,12 +97,7 @@ export default function HomePage() {
         setShowProfileReviewState(false);
         setReviewStartAt(null);
         setReviewStep(1);
-      }
-
-      if (typeof window !== "undefined") {
-        const isVerified = localStorage.getItem(MEMBERSHIP_STORAGE_KEY) === "true";
-        const hasApplied = !!localStorage.getItem(MEMBERSHIP_APPLICATION_STORAGE_KEY);
-        setIsWaitingForAccess(!!session && !isVerified && hasApplied);
+        setIsWaitingForAccess(false);
       }
     };
     checkAuth();
@@ -110,8 +111,27 @@ export default function HomePage() {
         setShowProfileReviewState(false);
         setReviewStartAt(null);
         setReviewStep(1);
+        setIsWaitingForAccess(false);
       } else {
         (async () => {
+          // Check membership and application status from database
+          const { data: memberData } = await supabase
+            .from("members")
+            .select("id")
+            .eq("user_id", session.user.id)
+            .maybeSingle();
+
+          const { data: applicationData } = await supabase
+            .from("membership_applications")
+            .select("id")
+            .eq("user_id", session.user.id)
+            .maybeSingle();
+
+          const isVerified = !!memberData;
+          const hasApplied = !!applicationData;
+          setIsWaitingForAccess(!isVerified && hasApplied);
+
+          // Fetch profile for review state
           const { data: profile } = await supabase
             .from("profiles")
             .select("conversation_transcript, updated_at")
@@ -132,16 +152,10 @@ export default function HomePage() {
           }
         })();
       }
-
-      if (typeof window !== "undefined") {
-        const isVerified = localStorage.getItem(MEMBERSHIP_STORAGE_KEY) === "true";
-        const hasApplied = !!localStorage.getItem(MEMBERSHIP_APPLICATION_STORAGE_KEY);
-        setIsWaitingForAccess(!!session && !isVerified && hasApplied);
-      }
     });
 
     return () => subscription.unsubscribe();
-  }, []);
+  }, [router]);
 
   useEffect(() => {
     document.body.style.overflow = menuOpen ? "hidden" : "";

@@ -27,6 +27,27 @@ function AuthCallbackContent() {
         data: { session },
       } = await supabase.auth.getSession();
       if (session) {
+        // Create profile entry if it doesn't exist
+        const { data: existingProfile } = await supabase
+          .from("profiles")
+          .select("id")
+          .eq("user_id", session.user.id)
+          .maybeSingle();
+
+        if (!existingProfile) {
+          const { error: profileError } = await supabase
+            .from("profiles")
+            .insert({
+              user_id: session.user.id,
+              is_complete: false,
+            });
+
+          if (profileError) {
+            console.error("Profile creation error:", profileError.message);
+            // Still redirect even if profile creation fails - it may already exist
+          }
+        }
+
         router.replace("/membership-access");
       } else {
         router.replace("/");
